@@ -306,8 +306,17 @@ int main(int argc, char const *argv[])
 		fflush (stdout);
 		exit (1);
 	}
+
 	FILE *file_dump, *file_dist, *file_stats;
-	file_dump = fopen (argv[1], "r");
+	char *pipeString;
+	pipeString = (char *) malloc (200 * sizeof (char));
+
+	if (strstr (argv[1], ".xz")) {
+		snprintf (pipeString, 200, "xzcat %s", argv[1]);
+		file_dump = popen (pipeString, "r"); }
+	else {
+		file_dump = fopen (argv[1], "r"); }
+
 	file_dist = fopen ("coordinationDistance.stats", "w");
 	file_stats = fopen (argv[6], "w");
 
