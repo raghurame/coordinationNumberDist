@@ -298,6 +298,15 @@ void printCoordinationDistributionHeader (FILE *file_dist, DIST_BINS *coordDist,
 	fprintf(file_dist, "\n");
 }
 
+DIST_BINS *normalizeCoordination (DIST_BINS *coordDist, int dist_nBins, float dist_binWidth)
+{
+	for (int i = 0; i < dist_nBins; ++i)
+	{
+		coordDist[i].count /= (coordDist[i].rlo * coordDist[i].rlo * dist_binWidth);
+	}
+	return coordDist;
+}
+
 int main(int argc, char const *argv[])
 {
 	if (argc != 7)
@@ -354,6 +363,7 @@ int main(int argc, char const *argv[])
 
 		atoms = readTimestep (file_dump, atoms, nAtomEntries, &boundary);
 		coordDist = computeCoordination (coordDist, &nCoordination, dist_nBins, atoms, atomType1, atomType2, dist_cutoff, nAtoms, boundary);
+		coordDist = normalizeCoordination (coordDist, dist_nBins, dist_binWidth);
 
 		printCoordinationNumber (file_stats, nCoordination);
 		printCoordinationDistribution (file_dist, coordDist, dist_nBins);
