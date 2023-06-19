@@ -250,11 +250,11 @@ DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int di
 	{
 		for (int i = 0; i < nAtoms; ++i)
 		{
-			if (atoms[i].atomType == atomType1)
+			if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
 			{
 				for (int j = i + 1; j < nAtoms; ++j)
 				{
-					if (atoms[j].atomType == atomType2)
+					if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 					{
 						withinBin = checkIfWithinBin (withinBin, atoms, i, j, nAtoms, boundary, coordDist, k, dist_cutoff);
 
