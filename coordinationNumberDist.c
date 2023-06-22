@@ -252,7 +252,7 @@ DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int di
 		{
 			if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
 			{
-				for (int j = i + 1; j < nAtoms; ++j)
+				for (int j = 0; j < nAtoms; ++j)
 				{
 					if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 					{
@@ -276,14 +276,14 @@ void printCoordinationNumber (FILE *file_stats, int nCoordination)
 	fprintf(file_stats, "%d\n", nCoordination);
 }
 
-void printCoordinationDistribution (FILE *file_dist, DIST_BINS *coordDist, int dist_nBins)
+void printCoordinationDistribution (FILE *file_dist, DIST_BINS *coordDist, int dist_nBins, int currentTimestep)
 {
+	fprintf(file_dist, "#timestep: %d\n", (currentTimestep + 1));
+
 	for (int i = 0; i < dist_nBins; ++i)
 	{
-		fprintf(file_dist, "%f\t", coordDist[i].count);
+		fprintf(file_dist, "%f\n", coordDist[i].count);
 	}
-
-	fprintf(file_dist, "\n");
 }
 
 void printCoordinationDistributionHeader (FILE *file_dist, DIST_BINS *coordDist, int dist_nBins)
@@ -307,11 +307,90 @@ DIST_BINS *normalizeCoordination (DIST_BINS *coordDist, int dist_nBins, float di
 	return coordDist;
 }
 
+float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms, int nAtoms, int atomType1, int atomType2, SIMULATION_BOUNDARY boundary, float dist_cutoff, int maxCoordination)
+{
+	int nCoordinationPerAtom = 0;
+
+	float xLength = (boundary.xhi - boundary.xlo), yLength = (boundary.yhi - boundary.ylo), zLength = (boundary.zhi - boundary.zlo);
+	float distance;
+	float newX, newY, newZ;
+
+	for (int i = 0; i < nAtoms; ++i)
+	{
+		if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
+		{
+			nCoordinationPerAtom = 0;
+
+			for (int j = 0; j < nAtoms; ++j)
+			{
+				if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
+				{
+					newX = translatePeriodicDistance (atoms[i].x, atoms[j].x, xLength, newX);
+					newY = translatePeriodicDistance (atoms[i].y, atoms[j].y, yLength, newY);
+					newZ = translatePeriodicDistance (atoms[i].z, atoms[j].z, zLength, newZ);
+
+					distance = sqrt (
+						(newX - atoms[j].x) * (newX - atoms[j].x) +
+						(newY - atoms[j].y) * (newY - atoms[j].y) +
+						(newZ - atoms[j].z) * (newZ - atoms[j].z)
+						);
+
+					if (distance <= dist_cutoff) {
+						nCoordinationPerAtom += 1; }
+				}
+			}
+
+			coordNum[nCoordinationPerAtom] += 1;
+		}
+	}
+
+
+	return coordNum;
+}
+
+float *initFloat (float *array, int size)
+{
+	for (int i = 0; i < size; ++i)
+	{
+		array[i] = 0;
+	}
+
+	return array;
+}
+
+void printCoordinationNumberDistributionRT (float *coordNum, int size, FILE *file_coordinationNumberDistribution_rt, int currentTimestep)
+{
+	fprintf(file_coordinationNumberDistribution_rt, "#timestep: %d\n", (currentTimestep + 1));
+
+	for (int i = 0; i < size; ++i)
+	{
+		fprintf(file_coordinationNumberDistribution_rt, "%d\n", (int)ceil(coordNum[i]));
+	}
+}
+
+float *sumCoordinationNumberDistribution (float *coordNumGlobal, float *coordNum, int size)
+{
+	for (int i = 0; i < size; ++i)
+	{
+		coordNumGlobal[i] += coordNum[i];
+	}
+
+	return coordNumGlobal;
+}
+
+void printCoordinationNumberDistribution (float *coordNumGlobal, int size, FILE *file_coordinationNumberDistribution, int currentTimestep)
+{
+	for (int i = 0; i < size; ++i)
+	{
+		fprintf(file_coordinationNumberDistribution, "%f\n", (coordNumGlobal[i] / (float)(currentTimestep + 1)));
+	}
+}
+
 int main(int argc, char const *argv[])
 {
-	if (argc != 7)
+	if (argc != 6)
 	{
-		fprintf(stdout, "REQUIRED ARGUMENTS:\n~~~~~~~~~~~~~~~~~~~\n\n {~} argv[0] = program\n {~} argv[1] = input dump file name\n {~} argv[2] = atom type 1\n {~} argv[3] = atom type 2\n {~} argv[4] = cutoff distance for coordination\n {~} argv[5] = distance bin width\n {~} argv[6] = output stats file\n\n");
+		fprintf(stdout, "REQUIRED ARGUMENTS:\n~~~~~~~~~~~~~~~~~~~\n\n {~} argv[0] = program\n {~} argv[1] = input dump file name\n {~} argv[2] = atom type 1\n {~} argv[3] = atom type 2\n {~} argv[4] = cutoff distance for coordination\n {~} argv[5] = distance bin width\n\n");
 		fflush (stdout);
 		exit (1);
 	}
@@ -326,8 +405,8 @@ int main(int argc, char const *argv[])
 	else {
 		file_dump = fopen (argv[1], "r"); }
 
-	file_dist = fopen ("coordinationDistance.stats", "w");
-	file_stats = fopen (argv[6], "w");
+	file_dist = fopen ("coordination.distance.distribution", "w");
+	file_stats = fopen ("coordination.count", "w");
 
 	int nAtomEntries, nAtoms = countNAtoms (file_dump, &nAtomEntries), atomType1 = atoi (argv[2]), atomType2 = atoi (argv[3]), file_status;
 	SIMULATION_BOUNDARY boundary;
@@ -342,6 +421,13 @@ int main(int argc, char const *argv[])
 	rewind (file_dump);
 	file_status = fgetc (file_dump);
 
+	float *coordNum, *coordNumGlobal;
+	coordNum = (float *) malloc (20 * sizeof (float)); // assuming 20 is the max coordination number
+	coordNum = initFloat (coordNum, 20);
+
+	coordNumGlobal = (float *) malloc (20 * sizeof (float)); // assuming 20 is the max coordination number
+	coordNumGlobal = initFloat (coordNumGlobal, 20);
+
 	DIST_BINS *coordDist;
 	float dist_cutoff = atof (argv[4]);
 	float dist_binWidth = atof (argv[5]);
@@ -350,11 +436,16 @@ int main(int argc, char const *argv[])
 	int nCoordination;
 	int currentTimestep = 0;
 
+	FILE *file_coordinationNumberDistribution_rt, *file_coordinationNumberDistribution;
+	file_coordinationNumberDistribution_rt = fopen ("coordination.number.distribution.rt", "w");
+	file_coordinationNumberDistribution = fopen ("coordination.number.distribution", "w");
 
 	while (file_status != EOF)
 	{
 		nCoordination = 0;
+		coordNum = initFloat (coordNum, 20);
 		coordDist = initializeDistBins (coordDist, dist_nBins, dist_binWidth);
+
 		fprintf(stdout, "Scanning timestep: %d                           \r", currentTimestep);
 		fflush (stdout);
 
@@ -366,14 +457,22 @@ int main(int argc, char const *argv[])
 		coordDist = normalizeCoordination (coordDist, dist_nBins, dist_binWidth);
 
 		printCoordinationNumber (file_stats, nCoordination);
-		printCoordinationDistribution (file_dist, coordDist, dist_nBins);
+		printCoordinationDistribution (file_dist, coordDist, dist_nBins, currentTimestep);
+
+		coordNum = computeCoordinationNumberDistribution (coordNum, atoms, nAtoms, atomType1, atomType2, boundary, dist_cutoff, 20);
+		coordNumGlobal = sumCoordinationNumberDistribution (coordNumGlobal, coordNum, 20);
+		printCoordinationNumberDistributionRT (coordNum, 20, file_coordinationNumberDistribution_rt, currentTimestep);
 
 		currentTimestep++;
 		file_status = fgetc (file_dump);
 	}
 
+	printCoordinationNumberDistribution (coordNumGlobal, 20, file_coordinationNumberDistribution, currentTimestep);
+
 	fclose (file_dump);
 	fclose (file_dist);
 	fclose (file_stats);
+	fclose (file_coordinationNumberDistribution_rt);
+	fclose (file_coordinationNumberDistribution);
 	return 0;
 }
