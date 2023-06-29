@@ -256,11 +256,14 @@ DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int di
 				{
 					if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 					{
-						withinBin = checkIfWithinBin (withinBin, atoms, i, j, nAtoms, boundary, coordDist, k, dist_cutoff);
+						if (i != j)
+						{
+							withinBin = checkIfWithinBin (withinBin, atoms, i, j, nAtoms, boundary, coordDist, k, dist_cutoff);
 
-						if (withinBin) {
-							(*nCoordination)++;
-							coordDist[k].count++; }
+							if (withinBin) {
+								(*nCoordination)++;
+								coordDist[k].count++; }
+						}
 					}
 				}
 			}
@@ -364,7 +367,7 @@ void printCoordinationNumberDistributionRT (float *coordNum, int size, FILE *fil
 
 	for (int i = 0; i < size; ++i)
 	{
-		fprintf(file_coordinationNumberDistribution_rt, "%d\n", (int)ceil(coordNum[i]));
+		fprintf(file_coordinationNumberDistribution_rt, "%d %d\n", i, (int)ceil(coordNum[i]));
 	}
 }
 
@@ -382,7 +385,7 @@ void printCoordinationNumberDistribution (float *coordNumGlobal, int size, FILE 
 {
 	for (int i = 0; i < size; ++i)
 	{
-		fprintf(file_coordinationNumberDistribution, "%f\n", (coordNumGlobal[i] / (float)(currentTimestep + 1)));
+		fprintf(file_coordinationNumberDistribution, "%d %f\n", i, (coordNumGlobal[i] / (float)(currentTimestep + 1)));
 	}
 }
 
