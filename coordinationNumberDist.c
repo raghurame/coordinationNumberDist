@@ -233,7 +233,7 @@ float translatePeriodicDistance (float x1, float x2, float simBoxLength, float n
 	}
 }
 
-bool checkIfWithinBin (bool withinBin, TRAJECTORY *atoms, int i, int j, int nAtoms, SIMULATION_BOUNDARY boundary, DIST_BINS *coordDist, int k, float dist_cutoff)
+bool checkIfWithinBin (bool withinBin, TRAJECTORY *atoms, int i, int j, int nAtoms, SIMULATION_BOUNDARY boundary, DIST_BINS *coordDist, int k, float dist_minCutoff, float dist_maxCutoff)
 {
 	float xLength = (boundary.xhi - boundary.xlo), yLength = (boundary.yhi - boundary.ylo), zLength = (boundary.zhi - boundary.zlo);
 	float distance;
@@ -262,7 +262,7 @@ bool checkIfWithinBin (bool withinBin, TRAJECTORY *atoms, int i, int j, int nAto
 	return withinBin;
 }
 
-DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int dist_nBins, TRAJECTORY *atoms, int atomType1, int atomType2, float dist_cutoff, int nAtoms, SIMULATION_BOUNDARY boundary)
+DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int dist_nBins, TRAJECTORY *atoms, int atomType1, int atomType2, float dist_minCutoff, float dist_maxCutoff, int nAtoms, SIMULATION_BOUNDARY boundary)
 {
 	bool withinBin;
 	(*nCoordination) = 0;
@@ -279,7 +279,7 @@ DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int di
 					{
 						if (i != j)
 						{
-							withinBin = checkIfWithinBin (withinBin, atoms, i, j, nAtoms, boundary, coordDist, k, dist_cutoff);
+							withinBin = checkIfWithinBin (withinBin, atoms, i, j, nAtoms, boundary, coordDist, k, dist_minCutoff, dist_maxCutoff);
 
 							if (withinBin) {
 								(*nCoordination)++;
@@ -331,7 +331,7 @@ DIST_BINS *normalizeCoordination (DIST_BINS *coordDist, int dist_nBins, float di
 	return coordDist;
 }
 
-float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms, int nAtoms, int atomType1, int atomType2, SIMULATION_BOUNDARY boundary, float dist_cutoff, int maxCoordination)
+float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms, int nAtoms, int atomType1, int atomType2, SIMULATION_BOUNDARY boundary, float dist_minCutoff, float dist_maxCutoff, int maxCoordination)
 {
 	int nCoordinationPerAtom = 0;
 
@@ -361,7 +361,7 @@ float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms
 							(newZ - atoms[j].z) * (newZ - atoms[j].z)
 							);
 
-						if (distance <= dist_cutoff) {
+						if (distance <= dist_maxCutoff && distance > dist_minCutoff) {
 							nCoordinationPerAtom += 1; }
 					}
 				}
@@ -415,9 +415,9 @@ void printCoordinationNumberDistribution (float *coordNumGlobal, int size, FILE 
 
 int main(int argc, char const *argv[])
 {
-	if (argc != 6)
+	if (argc != 7)
 	{
-		fprintf(stdout, "REQUIRED ARGUMENTS:\n~~~~~~~~~~~~~~~~~~~\n\n {~} argv[0] = program\n {~} argv[1] = input dump file name\n {~} argv[2] = atom type 1\n {~} argv[3] = atom type 2\n {~} argv[4] = cutoff distance for coordination\n {~} argv[5] = distance bin width\n\n");
+		fprintf(stdout, "REQUIRED ARGUMENTS:\n~~~~~~~~~~~~~~~~~~~\n\n {~} argv[0] = program\n {~} argv[1] = input dump file name\n {~} argv[2] = atom type 1\n {~} argv[3] = atom type 2\n {~} argv[4] = min. cutoff distance for coordination\n {~} argv[5] = max. cutoff distance for coordination\n {~} argv[6] = distance bin width\n\n");
 		fflush (stdout);
 		exit (1);
 	}
@@ -467,9 +467,14 @@ int main(int argc, char const *argv[])
 	coordNumGlobal = initFloat (coordNumGlobal, 20);
 
 	DIST_BINS *coordDist;
-	float dist_cutoff = atof (argv[4]);
-	float dist_binWidth = atof (argv[5]);
-	int dist_nBins = ceil (dist_cutoff / dist_binWidth);
+	float dist_minCutoff = atof (argv[4]), dist_maxCutoff = atof (argv[5]);
+
+	if (dist_minCutoff >= dist_maxCutoff) {
+		printf("ERROR:\n~~~~~\n\n Minimum cutoff distance is greater than or equal to the maximum cutoff distance.\n");
+		exit (1); }
+
+	float dist_binWidth = atof (argv[6]);
+	int dist_nBins = ceil ((dist_maxCutoff - dist_maxCutoff) / dist_binWidth);
 	coordDist = (DIST_BINS *) malloc (dist_nBins * sizeof (DIST_BINS));
 	int nCoordination;
 	int currentTimestep = 0;
@@ -491,13 +496,13 @@ int main(int argc, char const *argv[])
 			printCoordinationDistributionHeader (file_dist, coordDist, dist_nBins); }
 
 		atoms = readTimestep (file_dump, atoms, nAtomEntries, &boundary);
-		coordDist = computeCoordination (coordDist, &nCoordination, dist_nBins, atoms, atomType1, atomType2, dist_cutoff, nAtoms, boundary);
+		coordDist = computeCoordination (coordDist, &nCoordination, dist_nBins, atoms, atomType1, atomType2, dist_minCutoff, dist_maxCutoff, nAtoms, boundary);
 		coordDist = normalizeCoordination (coordDist, dist_nBins, dist_binWidth);
 
 		printCoordinationNumber (file_stats, nCoordination);
 		printCoordinationDistribution (file_dist, coordDist, dist_nBins, currentTimestep);
 
-		coordNum = computeCoordinationNumberDistribution (coordNum, atoms, nAtoms, atomType1, atomType2, boundary, dist_cutoff, 20);
+		coordNum = computeCoordinationNumberDistribution (coordNum, atoms, nAtoms, atomType1, atomType2, boundary, dist_minCutoff, dist_maxCutoff, 20);
 		coordNumGlobal = sumCoordinationNumberDistribution (coordNumGlobal, coordNum, 20);
 		printCoordinationNumberDistributionRT (coordNum, 20, file_coordinationNumberDistribution_rt, currentTimestep);
 
