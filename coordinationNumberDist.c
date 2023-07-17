@@ -436,7 +436,7 @@ int main(int argc, char const *argv[])
 	SIMULATION_BOUNDARY boundary;
 	boundary = readDumpBoundary (file_dump, boundary);
 
-	if (strstr (inputFileName, ".xz")) {
+	if (strstr (argv[1], ".xz")) {
 		pclose (file_dump);
 		file_dump = popen (pipeString, "r"); }
 	else {
@@ -448,7 +448,7 @@ int main(int argc, char const *argv[])
 
 	atoms = initializeAtoms (atoms, nAtoms);
 
-	if (strstr (inputFileName, ".xz")) {
+	if (strstr (argv[1], ".xz")) {
 		pclose (file_dump);
 		file_dump = popen (pipeString, "r"); }
 	else {
