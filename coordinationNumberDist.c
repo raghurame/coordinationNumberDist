@@ -349,18 +349,21 @@ float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms
 			{
 				if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 				{
-					newX = translatePeriodicDistance (atoms[i].x, atoms[j].x, xLength, newX);
-					newY = translatePeriodicDistance (atoms[i].y, atoms[j].y, yLength, newY);
-					newZ = translatePeriodicDistance (atoms[i].z, atoms[j].z, zLength, newZ);
+					if (i != j)
+					{
+						newX = translatePeriodicDistance (atoms[i].x, atoms[j].x, xLength, newX);
+						newY = translatePeriodicDistance (atoms[i].y, atoms[j].y, yLength, newY);
+						newZ = translatePeriodicDistance (atoms[i].z, atoms[j].z, zLength, newZ);
 
-					distance = sqrt (
-						(newX - atoms[j].x) * (newX - atoms[j].x) +
-						(newY - atoms[j].y) * (newY - atoms[j].y) +
-						(newZ - atoms[j].z) * (newZ - atoms[j].z)
-						);
+						distance = sqrt (
+							(newX - atoms[j].x) * (newX - atoms[j].x) +
+							(newY - atoms[j].y) * (newY - atoms[j].y) +
+							(newZ - atoms[j].z) * (newZ - atoms[j].z)
+							);
 
-					if (distance <= dist_cutoff) {
-						nCoordinationPerAtom += 1; }
+						if (distance <= dist_cutoff) {
+							nCoordinationPerAtom += 1; }
+					}
 				}
 			}
 
