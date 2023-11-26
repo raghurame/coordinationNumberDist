@@ -8,7 +8,7 @@
 
 typedef struct trajectory
 {
-	int atomID, atomType, molType, ix, iy, iz;
+	int atomID, atomType, molType, molID, ix, iy, iz;
 	float x, y, z;
 	int isEndGroup;
 } TRAJECTORY;
@@ -131,6 +131,7 @@ int countNAtoms (int *nAtomEntries, const char *inputFileName)
 
 	return nAtomsFixed;
 }
+
 SIMULATION_BOUNDARY readDumpBoundary (FILE *file_dump, SIMULATION_BOUNDARY boundary)
 {
 	rewind (file_dump);
@@ -192,8 +193,12 @@ TRAJECTORY *readTimestep (FILE *file_dump, TRAJECTORY *atoms, int nAtomEntries, 
 	{
 		fgets (lineString, 2000, file_dump);
 		sscanf (lineString, "%d\n", &currentAtomID);
-		sscanf (lineString, "%d %d %f %f %f %d %d %d\n", &atoms[currentAtomID - 1].atomID, &atoms[currentAtomID - 1].atomType, &atoms[currentAtomID - 1].x, &atoms[currentAtomID - 1].y, &atoms[currentAtomID - 1].z, &atoms[currentAtomID - 1].ix, &atoms[currentAtomID - 1].iy, &atoms[currentAtomID - 1].iz);
-		atoms[currentAtomID - 1].isEndGroup = 0;
+		// sscanf (lineString, "%d %d %f %f %f %d %d %d\n", &atoms[currentAtomID - 1].atomID, &atoms[currentAtomID - 1].atomType, &atoms[currentAtomID - 1].x, &atoms[currentAtomID - 1].y, &atoms[currentAtomID - 1].z, &atoms[currentAtomID - 1].ix, &atoms[currentAtomID - 1].iy, &atoms[currentAtomID - 1].iz);
+		if (currentAtomID > 0)
+		{
+			sscanf (lineString, "%d %d %d %d %f %f %f %d %d %d\n", &atoms[currentAtomID - 1].atomID, &atoms[currentAtomID - 1].atomType, &atoms[currentAtomID - 1].molID, &atoms[currentAtomID - 1].molType, &atoms[currentAtomID - 1].x, &atoms[currentAtomID - 1].y, &atoms[currentAtomID - 1].z, &atoms[currentAtomID - 1].ix, &atoms[currentAtomID - 1].iy, &atoms[currentAtomID - 1].iz);
+			atoms[currentAtomID - 1].isEndGroup = 0;
+		}
 	}
 
 	return atoms;
@@ -270,7 +275,7 @@ DIST_BINS *computeCoordination (DIST_BINS *coordDist, int *nCoordination, int di
 	for (int k = 0; k < dist_nBins; ++k)
 	{
 		for (int i = 0; i < nAtoms; ++i)
-		{
+		{			
 			if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
 			{
 				for (int j = 0; j < nAtoms; ++j)
@@ -341,15 +346,15 @@ float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms
 
 	for (int i = 0; i < nAtoms; ++i)
 	{
+		nCoordinationPerAtom = 0;
+
 		if ((atoms[i].atomType == atomType1) || (atomType1 == -1))
 		{
-			nCoordinationPerAtom = 0;
-
 			for (int j = 0; j < nAtoms; ++j)
 			{
 				if ((atoms[j].atomType == atomType2) || (atomType2 == -1))
 				{
-					if (i != j)
+					if ((i != j) && (atoms[i].molID != atoms[j].molID))
 					{
 						newX = translatePeriodicDistance (atoms[i].x, atoms[j].x, xLength, newX);
 						newY = translatePeriodicDistance (atoms[i].y, atoms[j].y, yLength, newY);
@@ -362,7 +367,10 @@ float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms
 							);
 
 						if (distance <= dist_maxCutoff && distance > dist_minCutoff) {
-							nCoordinationPerAtom += 1; }
+							// printf("%d => (%f) %f (%f)\n", i, dist_minCutoff, distance, dist_maxCutoff);
+							// usleep (100000);
+							nCoordinationPerAtom += 1; 
+						}
 					}
 				}
 			}
@@ -370,7 +378,6 @@ float *computeCoordinationNumberDistribution (float *coordNum, TRAJECTORY *atoms
 			coordNum[nCoordinationPerAtom] += 1;
 		}
 	}
-
 
 	return coordNum;
 }
@@ -409,7 +416,7 @@ void printCoordinationNumberDistribution (float *coordNumGlobal, int size, FILE 
 {
 	for (int i = 0; i < size; ++i)
 	{
-		fprintf(file_coordinationNumberDistribution, "%d %f\n", i, (coordNumGlobal[i] / (float)(currentTimestep + 1)));
+		fprintf(file_coordinationNumberDistribution, "%d %f %f\n", i, coordNumGlobal[i], (coordNumGlobal[i] / (float)(currentTimestep + 1)));
 	}
 }
 
@@ -432,8 +439,17 @@ int main(int argc, char const *argv[])
 	else {
 		file_dump = fopen (argv[1], "r"); }
 
-	file_dist = fopen ("coordination.distance.distribution", "w");
-	file_stats = fopen ("coordination.count", "w");
+	char *char_file_dist, *char_file_stats, *char_file_coordinationNumberDistribution_rt, *char_file_coordinationNumberDistribution;
+	char_file_dist = (char *) malloc (3000 * sizeof (char));
+	char_file_stats = (char *) malloc (3000 * sizeof (char));
+	char_file_coordinationNumberDistribution_rt = (char *) malloc (3000 * sizeof (char));
+	char_file_coordinationNumberDistribution = (char *) malloc (3000 * sizeof (char));
+
+	snprintf (char_file_dist, 3000, "%s_coordination_%d_%d_from%.3f_to%.3f.distance.distribution", argv[1], atoi (argv[2]), atoi (argv[3]), atof (argv[4]), atof (argv[5]));
+	file_dist = fopen (char_file_dist, "w");
+
+	snprintf (char_file_stats, 3000, "%s_coordination_%d_%d_from%.3f_to%.3f.count", argv[1], atoi (argv[2]), atoi (argv[3]), atof (argv[4]), atof (argv[5]));
+	file_stats = fopen (char_file_stats, "w");
 
 	int nAtomEntries, nAtoms = countNAtoms (&nAtomEntries, argv[1]), atomType1 = atoi (argv[2]), atomType2 = atoi (argv[3]), file_status;
 	SIMULATION_BOUNDARY boundary;
@@ -447,7 +463,6 @@ int main(int argc, char const *argv[])
 
 	TRAJECTORY *atoms;
 	atoms = (TRAJECTORY *) malloc (nAtoms * sizeof (TRAJECTORY));
-	printf("Number of atoms in the trajectory file: %d\n", nAtoms);
 
 	atoms = initializeAtoms (atoms, nAtoms);
 
@@ -459,12 +474,13 @@ int main(int argc, char const *argv[])
 
 	file_status = fgetc (file_dump);
 
+	int maxCoordination = 200;
 	float *coordNum, *coordNumGlobal;
-	coordNum = (float *) malloc (20 * sizeof (float)); // assuming 20 is the max coordination number
-	coordNum = initFloat (coordNum, 20);
+	coordNum = (float *) malloc (maxCoordination * sizeof (float)); // assuming 20 is the max coordination number
+	coordNum = initFloat (coordNum, maxCoordination);
 
-	coordNumGlobal = (float *) malloc (20 * sizeof (float)); // assuming 20 is the max coordination number
-	coordNumGlobal = initFloat (coordNumGlobal, 20);
+	coordNumGlobal = (float *) malloc (maxCoordination * sizeof (float)); // assuming 20 is the max coordination number
+	coordNumGlobal = initFloat (coordNumGlobal, maxCoordination);
 
 	DIST_BINS *coordDist;
 	float dist_minCutoff = atof (argv[4]), dist_maxCutoff = atof (argv[5]);
@@ -474,19 +490,22 @@ int main(int argc, char const *argv[])
 		exit (1); }
 
 	float dist_binWidth = atof (argv[6]);
-	int dist_nBins = ceil ((dist_maxCutoff - dist_maxCutoff) / dist_binWidth);
+	int dist_nBins = ceil ((dist_maxCutoff - dist_minCutoff) / dist_binWidth);
+	printf("dist_nBins: %d\n", dist_nBins);
 	coordDist = (DIST_BINS *) malloc (dist_nBins * sizeof (DIST_BINS));
 	int nCoordination;
 	int currentTimestep = 0;
 
 	FILE *file_coordinationNumberDistribution_rt, *file_coordinationNumberDistribution;
-	file_coordinationNumberDistribution_rt = fopen ("coordination.number.distribution.rt", "w");
-	file_coordinationNumberDistribution = fopen ("coordination.number.distribution", "w");
+	snprintf (char_file_coordinationNumberDistribution_rt, 3000, "%s_coordination_%d_%d_from%.3f_to%.3f.number.distribution.rt", argv[1], atoi (argv[2]), atoi (argv[3]), atof (argv[4]), atof (argv[5]));
+	snprintf (char_file_coordinationNumberDistribution, 3000, "%s_coordination_%d_%d_from%.3f_to%.3f.number.distribution", argv[1], atoi (argv[2]), atoi (argv[3]), atof (argv[4]), atof (argv[5]));
+	file_coordinationNumberDistribution_rt = fopen (char_file_coordinationNumberDistribution_rt, "w");
+	file_coordinationNumberDistribution = fopen (char_file_coordinationNumberDistribution, "w");
 
 	while (file_status != EOF)
 	{
 		nCoordination = 0;
-		coordNum = initFloat (coordNum, 20);
+		coordNum = initFloat (coordNum, maxCoordination);
 		coordDist = initializeDistBins (coordDist, dist_nBins, dist_binWidth);
 
 		fprintf(stdout, "Scanning timestep: %d                           \r", currentTimestep);
@@ -502,20 +521,28 @@ int main(int argc, char const *argv[])
 		printCoordinationNumber (file_stats, nCoordination);
 		printCoordinationDistribution (file_dist, coordDist, dist_nBins, currentTimestep);
 
-		coordNum = computeCoordinationNumberDistribution (coordNum, atoms, nAtoms, atomType1, atomType2, boundary, dist_minCutoff, dist_maxCutoff, 20);
-		coordNumGlobal = sumCoordinationNumberDistribution (coordNumGlobal, coordNum, 20);
-		printCoordinationNumberDistributionRT (coordNum, 20, file_coordinationNumberDistribution_rt, currentTimestep);
+		coordNum = computeCoordinationNumberDistribution (coordNum, atoms, nAtoms, atomType1, atomType2, boundary, dist_minCutoff, dist_maxCutoff, maxCoordination);
+
+		// for (int i = 0; i < maxCoordination; ++i)
+		// {
+		// 	printf("%d %f\n", i + 1, coordNum[i]);
+		// 	usleep (100000);
+		// }
+
+		coordNumGlobal = sumCoordinationNumberDistribution (coordNumGlobal, coordNum, maxCoordination);
+
+		printCoordinationNumberDistributionRT (coordNum, maxCoordination, file_coordinationNumberDistribution_rt, currentTimestep);
 
 		currentTimestep++;
 		file_status = fgetc (file_dump);
 	}
 
-	printCoordinationNumberDistribution (coordNumGlobal, 20, file_coordinationNumberDistribution, currentTimestep);
+	printCoordinationNumberDistribution (coordNumGlobal, maxCoordination, file_coordinationNumberDistribution, currentTimestep);
 
-	fclose (file_dump);
-	fclose (file_dist);
-	fclose (file_stats);
-	fclose (file_coordinationNumberDistribution_rt);
-	fclose (file_coordinationNumberDistribution);
+	// fclose (file_dump);
+	// fclose (file_dist);
+	// fclose (file_stats);
+	// fclose (file_coordinationNumberDistribution_rt);
+	// fclose (file_coordinationNumberDistribution);
 	return 0;
 }
